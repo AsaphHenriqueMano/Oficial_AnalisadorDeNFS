@@ -1,0 +1,109 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Analisador de NF-e (MVP)</title>
+  <style>
+    body { font-family: sans-serif; margin: 2em; background: #f4f4f4; }
+    h1 { color: #333; }
+    input[type="file"] { margin-bottom: 1em; }
+    .card { background: white; padding: 1.5em; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); margin-bottom: 1em; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1em; }
+    th, td { padding: 8px; border: 1px solid #ccc; text-align: center; }
+  </style>
+</head>
+<body>
+
+  <h1>📄 Analisador de Notas Fiscais (MVP Frontend)</h1>
+  <input type="file" id="fileInput" accept=".xml" multiple />
+  <button id="analisarBtn">Analisar</button>
+
+  <div id="resultado" class="card" style="display:none;">
+    <h2>📊 Resultado</h2>
+    <div id="tabelaNotas"></div>
+    <div id="analiseFinal"></div>
+  </div>
+
+  <script>
+    function parseXML(xmlStr) {
+      const parser = new DOMParser();
+      return parser.parseFromString(xmlStr, "application/xml");
+    }
+
+    function extrairDados(xml) {
+      const numero = xml.querySelector("nNF")?.textContent || "0";
+      const valor = parseFloat(xml.querySelector("vNF")?.textContent || "0");
+      const cnpj = xml.querySelector("emit > CNPJ")?.textContent || "00000000000000";
+      const data = xml.querySelector("dhEmi")?.textContent?.slice(0, 10) || "2023-01-01";
+      return { numero: parseInt(numero), valor, cnpj, data };
+    }
+
+    async function processarArquivos() {
+      const input = document.getElementById("fileInput");
+      const files = Array.from(input.files).slice(0, 6);
+      if (files.length < 2) {
+        alert("Envie pelo menos 2 arquivos XML de NF-e.");
+        return;
+      }
+
+      const resultados = [];
+      for (const file of files) {
+        const text = await file.text();
+        const xml = parseXML(text);
+        const dados = extrairDados(xml);
+        resultados.push(dados);
+      }
+
+      resultados.sort((a, b) => new Date(a.data) - new Date(b.data));
+
+      mostrarResultados(resultados);
+    }
+
+    function diasCorridosEntreDatas(dataInicio, dataFim) {
+      const inicio = new Date(dataInicio);
+      const fim = new Date(dataFim);
+      const diffTime = Math.abs(fim - inicio);
+      return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    }
+
+    function mostrarResultados(notas) {
+      const tabela = `
+        <table>
+          <tr><th>Número</th><th>Valor</th><th>CNPJ</th><th>Data</th></tr>
+          ${notas.map(n => `<tr><td>${n.numero}</td><td>R$ ${n.valor.toFixed(2)}</td><td>${n.cnpj}</td><td>${n.data}</td></tr>`).join('')}
+        </table>
+      `;
+
+      const datas = notas.map(n => n.data).sort();
+      const dataMaisAntiga = datas[0];
+      const dataMaisRecente = datas[datas.length - 1];
+      const diasCorridos = diasCorridosEntreDatas(dataMaisAntiga, dataMaisRecente);
+
+      const primeiroNumero = notas[0].numero;
+      const ultimoNumero = notas[notas.length - 1].numero;
+      const totalNotasEmitidas = ultimoNumero - primeiroNumero + 1;
+
+      const fator = Math.round((30 * totalNotasEmitidas) / diasCorridos);
+      const mediaValor = notas.reduce((s, n) => s + n.valor, 0) / notas.length;
+      const faturamentoEstimadoMensal = fator * mediaValor;
+
+      const analise = `
+        <h3>📈 Análise</h3>
+        <p>🗓️ Dias corridos entre a 1ª e última NF: <b>${diasCorridos} dias</b></p>
+        <p>📄 Total de notas emitidas nesse período (com base na numeração): <b>${totalNotasEmitidas}</b></p>
+        <p>📆 Quantidade de notas emitidas por mês (estimativa ajustada): <b>${fator}</b></p>
+        <p>💰 Valor médio por nota: <b>R$ ${mediaValor.toFixed(2)}</b></p>
+        <p>📊 Faturamento médio mensal estimado: <b>R$ ${faturamentoEstimadoMensal.toFixed(2)}</b></p>
+      `;
+
+      document.getElementById("tabelaNotas").innerHTML = tabela;
+      document.getElementById("analiseFinal").innerHTML = analise;
+      document.getElementById("resultado").style.display = "block";
+    }
+
+    document.getElementById("analisarBtn").addEventListener("click", processarArquivos);
+  </script>
+</body>
+</html>
